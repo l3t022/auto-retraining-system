@@ -1,7 +1,13 @@
 # Auto-Retrain System Configuration
 
+# ===== CONFIGURATION =====
+# NOTE: Ensure the data file specified below exists in the data/ folder
+# For Google Colab: Upload your data to data/insurance.csv or use generate_data.py
+
 # Paths
-DATA_PATH: "data/train.csv"
+# Use relative paths from the project root (where config.yaml is located)
+# Data file: Place your CSV file in data/ folder and update DATA_PATH below
+DATA_PATH: "data/insurance.csv"  # Change to "data/train.csv" for generated data, or your actual file
 MODEL_PATH: "models/"
 LOGS_PATH: "logs/"
 BASELINE_PATH: "logs/baseline.json"

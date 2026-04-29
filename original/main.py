@@ -59,12 +59,28 @@ class AutoRetrainSystem:
     
     def _init_components(self):
         """Inicializa los componentes del sistema."""
-        paths = self.config.get('PATHS', {})
+        
+        # Get project root (where config.yaml is located)
+        self.config_path = getattr(self, 'config_path', 'config.yaml')
+        self.project_root = os.path.dirname(os.path.abspath(self.config_path))
+        
+        # Ensure required directories exist
+        self._ensure_directories()
+        
+        # Get paths from config
+        paths = self.config  # Paths are at root level in config.yaml
+        
+        # Resolve relative paths
+        def resolve_path(relative_path):
+            if relative_path and not os.path.isabs(relative_path):
+                return os.path.join(self.project_root, relative_path)
+            return relative_path
         
         # Data Loader
+        data_path = resolve_path(paths.get('DATA_PATH', 'data/insurance.csv'))
         self.data_loader = DataLoader(
-            data_path=paths.get('DATA_PATH', 'data/train.csv'),
-            baseline_path=paths.get('BASELINE_PATH', 'logs/baseline_data.json'),
+            data_path=data_path,
+            baseline_path=resolve_path(paths.get('BASELINE_PATH', 'logs/baseline_data.json')),
         )
         
         # Evaluator
@@ -99,9 +115,21 @@ class AutoRetrainSystem:
         
         # Selector
         self.selector = ModelSelector(
-            models_dir=paths.get('MODEL_PATH', 'models/').replace('/current.pkl', ''),
+            models_dir=resolve_path(paths.get('MODEL_PATH', 'models/')),
             task_type=self.config.get('TASK_TYPE', 'regression'),
         )
+    
+    def _ensure_directories(self):
+        """Ensure required directories exist."""
+        dirs_to_create = ['models', 'logs', 'data']
+        
+        for dir_name in dirs_to_create:
+            full_path = os.path.join(self.project_root, dir_name)
+            try:
+                os.makedirs(full_path, exist_ok=True)
+                self.logger.info(f"Directorio verificado: {full_path}")
+            except Exception as e:
+                self.logger.warning(f"No se pudo crear {full_path}: {e}")
     
     def check_data(self) -> Tuple[bool, Dict]:
         """ Verifica si hay nuevos datos."""
@@ -240,6 +268,38 @@ class AutoRetrainSystem:
         # Step 1: Cargar datos si no se proporcionan
         if X is None or y is None:
             try:
+                # Verify data file exists
+                data_path = self.data_loader.data_path
+                if not os.path.exists(data_path):
+                    # Check for alternative data files
+                    data_dir = os.path.dirname(data_path)
+                    if os.path.exists(data_dir):
+                        available_files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
+                        if available_files:
+                            error_msg = (
+                                f"ERROR: Archivo de datos no encontrado: {data_path}\n"
+                                f"Archivos CSV disponibles en data/: {available_files}\n"
+                                f"ACCION: Configure DATA_PATH en config.yaml con uno de estos archivos "
+                                f"o mueva su archivo a la carpeta data/"
+                            )
+                        else:
+                            error_msg = (
+                                f"ERROR: archivo de datos no encontrado: {data_path}\n"
+                                f"ACCION: Either:\n"
+                                f"  1. Place your CSV file in data/ folder and update DATA_PATH in config.yaml\n"
+                                f"  2. Run: python generate_data.py --samples 500 --features 10\n"
+                                f"  3. Or provide X and y directly when calling run_cycle()"
+                            )
+                    else:
+                        error_msg = (
+                            f"ERROR: Directorio data/ no encontrado en: {data_dir}\n"
+                            f"ACCION: Cree la carpeta data/ y copie su archivo CSV alli"
+                        )
+                    
+                    self.logger.error(error_msg)
+                    results['details']['error'] = error_msg
+                    return results
+                
                 df = self.data_loader.load_data()
                 target_col = self.config.get('TARGET_COLUMN', None)
                 if target_col is None:
