@@ -251,19 +251,20 @@ class DataLoader:
         
         return stats
     
-    def load_data(self, validate: bool = True, task_type: str = "regression") -> pd.DataFrame:
+    def load_data(self, validate: bool = True, task_type: str = "regression", encode_categoricals: bool = True) -> pd.DataFrame:
         """
         Carga datos desde el path configurado.
         
         Args:
-            validate: Si True, ejecuta validación de calidad
+            validate: Si True, ejecuta validacion de calidad
             task_type: "regression" o "classification"
+            encode_categoricals: Si True, codifica columnas categoricas automaticamente
             
         Returns:
             DataFrame cargado y validado
             
         Raises:
-            DataValidationError: Si la validación falla
+            DataValidationError: Si la validacion falla
         """
         if self.data_path.endswith('.csv'):
             df = pd.read_csv(self.data_path)
@@ -272,24 +273,50 @@ class DataLoader:
         elif self.data_path.endswith('.parquet'):
             df = pd.read_parquet(self.data_path)
         else:
-            raise ValueError(f"Formato no suportado: {self.data_path}")
+            raise ValueError(f"Formato no soportado: {self.data_path}")
+        
+        # Automatic categorical encoding
+        if encode_categoricals:
+            df = self._encode_categorical_columns(df)
         
         if validate:
             is_valid, report = self.validator.validate(df, task_type)
             
             if not is_valid:
-                error_msg = "Validación de datos falló:\n" + "\n".join(report["errors"])
+                error_msg = "Validacion de datos fallo:\n" + "\n".join(report["errors"])
                 raise DataValidationError(error_msg)
             
             if report["warnings"]:
-                print(f"Advertencias de validación: {report['warnings']}")
+                print(f"Advertencias de validacion: {report['warnings']}")
             
             pii_cols = detect_pii(df)
             if pii_cols:
                 print(f"Columnas PII detectadas: {pii_cols}. Considere sanitizar.")
         
         return df
-    
+
+    def _encode_categorical_columns(self, df):
+        from sklearn.preprocessing import LabelEncoder
+        df_encoded = df.copy()
+        encoded_cols = []
+        categorical_cols = df_encoded.select_dtypes(include=['object', 'category']).columns
+        target_col = df_encoded.columns[-1]
+        categorical_cols = [c for c in categorical_cols if c != target_col]
+        for col in categorical_cols:
+            unique_vals = df_encoded[col].nunique()
+            if unique_vals <= 10:
+                le = LabelEncoder()
+                df_encoded[col] = le.fit_transform(df_encoded[col].astype(str))
+                encoded_cols.append(col)
+            else:
+                dummies = pd.get_dummies(df_encoded[col], prefix=col, drop_first=True)
+                df_encoded = pd.concat([df_encoded, dummies], axis=1)
+                df_encoded = df_encoded.drop(columns=[col])
+                encoded_cols.append(col)
+        if encoded_cols:
+            print(f"Columnas codificadas: {encoded_cols}")
+        return df_encoded
+
     def load_from_drive(self, file_id: str) -> pd.DataFrame:
         """Carga datos desde Google Drive."""
         try:
