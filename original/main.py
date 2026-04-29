@@ -57,7 +57,7 @@ class AutoRetrainSystem:
         )
         self.logger = logging.getLogger(__name__)
     
-    def _init_components):
+    def _init_components(self):
         """Inicializa los componentes del sistema."""
         paths = self.config.get('PATHS', {})
         
