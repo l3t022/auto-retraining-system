@@ -24,7 +24,7 @@ class ModelTrainer:
         model_type: str = "xgboost",
         n_trials: int = 20,
         timeout: int = 300,
-        cv_folds: int = 5,
+        cv_folds: int = 3,
         random_state: int = 42,
     ):
         self.task_type = task_type
@@ -297,7 +297,7 @@ def train_with_optuna(
     task_type: str = "regression",
     n_trials: int = 20,
     timeout: int = 300,
-    cv_folds: int = 5,
+    cv_folds: int = 3,
     random_state: int = 42,
 ) -> Tuple[object, Dict, float, optuna.Study]:
     """Función de conveniencia para entrenar con Optuna."""

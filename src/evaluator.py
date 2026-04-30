@@ -115,7 +115,11 @@ class ModelEvaluator:
                     'f1': float(f1_score(y, y_pred, average='binary', zero_division=0)),
                 }
                 try:
-                    metrics['auc_roc'] = float(roc_auc_score(y, y_pred))
+                    if hasattr(self.current_model, "predict_proba"):
+                        y_pred_proba = self.current_model.predict_proba(X)[:, 1]
+                        metrics['auc_roc'] = float(roc_auc_score(y, y_pred_proba))
+                    else:
+                        metrics['auc_roc'] = float(roc_auc_score(y, y_pred))
                 except:
                     pass
             else:  # multiclass

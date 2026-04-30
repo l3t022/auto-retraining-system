@@ -124,16 +124,139 @@ class DataValidator:
         if df.empty or not hasattr(df, "iloc"):
             return
         
+"""
+Data Loader Module with Validation
+Carga datos desde CSV, Google Drive u otras fuentes con validación de calidad.
+"""
+
+import hashlib
+import json
+import os
+from typing import Dict, List, Optional, Tuple, Any
+
+import pandas as pd
+import numpy as np
+from scipy import stats as scipy_stats
+
+
+class DataValidationError(Exception):
+    """Custom exception for data validation errors."""
+    pass
+
+
+class DataValidator:
+    """Validador de calidad de datos."""
+    
+    MAX_NULL_PERCENT = 0.05  # 5% max valores nulos
+    MAX_DUPLICATE_PERCENT = 0.01  # 1% max duplicados
+    MAX_OUTLIER_PERCENT = 0.03  # 3% max outliers (IQR-based)
+    MIN_CLASS_RATIO = 0.1  # Min ratio 1:10 para clasificación
+    
+    def __init__(self, config: Optional[Dict] = None):
+        self.config = config or {}
+        self.errors: List[str] = []
+        self.warnings: List[str] = []
+    
+    def validate(self, df: pd.DataFrame, task_type: str = "regression") -> Tuple[bool, Dict]:
+        """
+        Ejecuta todas las validaciones.
+        
+        Args:
+            df: DataFrame a validar
+            task_type: "regression" o "classification"
+            
+        Returns:
+            (is_valid, validation_report)
+        """
+        self.errors = []
+        self.warnings = []
+        
+        self._check_nulls(df)
+        self._check_duplicates(df)
+        self._check_outliers(df)
+        self._check_dtypes(df)
+        
+        if task_type == "classification":
+            self._check_class_balance(df)
+        
+        is_valid = len(self.errors) == 0
+        
+        report = {
+            "is_valid": is_valid,
+            "errors": self.errors,
+            "warnings": self.warnings,
+            "checks_passed": len(self.warnings) + len(self.errors) == 0
+        }
+        
+        return is_valid, report
+    
+    def _check_nulls(self, df: pd.DataFrame):
+        """Valida valores nulos."""
+        null_pct = df.isnull().sum() / len(df)
+        exceeded = null_pct[null_pct > self.MAX_NULL_PERCENT]
+        
+        for col, pct in exceeded.items():
+            self.errors.append(
+                f"Columna '{col}': {pct:.1%} valores nulos (max: {self.MAX_NULL_PERCENT:.1%})"
+            )
+    
+    def _check_duplicates(self, df: pd.DataFrame):
+        """Valida filas duplicadas."""
+        dup_pct = df.duplicated().sum() / len(df)
+        
+        if dup_pct > self.MAX_DUPLICATE_PERCENT:
+            self.errors.append(
+                f"Filas duplicadas: {dup_pct:.1%} (max: {self.MAX_DUPLICATE_PERCENT:.1%})"
+            )
+    
+    def _check_outliers(self, df: pd.DataFrame):
+        """Valida outliers usando IQR."""
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        
+        for col in numeric_cols:
+            if df[col].isnull().all():
+                continue
+            
+            Q1 = df[col].quantile(0.25)
+            Q3 = df[col].quantile(0.75)
+            IQR = Q3 - Q1
+            
+            if IQR == 0:
+                continue
+            
+            lower = Q1 - 1.5 * IQR
+            upper = Q3 + 1.5 * IQR
+            
+            outlier_count = ((df[col] < lower) | (df[col] > upper)).sum()
+            outlier_pct = outlier_count / len(df)
+            
+            if outlier_pct > self.MAX_OUTLIER_PERCENT:
+                self.warnings.append(
+                    f"Outliers en '{col}': {outlier_pct:.1%}"
+                )
+    
+    def _check_dtypes(self, df: pd.DataFrame):
+        """Valida tipos de datos."""
+        if df.empty:
+            self.errors.append("DataFrame vacío")
+            return
+        
+        numeric_cols = df.select_dtypes(include=[np.number]).columns
+        if len(numeric_cols) == 0:
+            self.warnings.append("No se encontraron columnas numéricas")
+    
+    def _check_class_balance(self, df: pd.DataFrame):
+        """Valida balance de clases para clasificación."""
+        if df.empty or not hasattr(df, "iloc"):
+            return
+        
         # Asumir última columna como target
         target_col = df.columns[-1]
         
         if df[target_col].dtype not in ['int64', 'float64', 'object']:
             return
         
-        if df[target_col].dtype == 'object':
-            value_counts = df[target_col].value_counts()
-        else:
-            value_counts = df[target_col].value_counts()
+        value_counts = df[target_col].value_counts()
         
         if len(value_counts) < 2:
             self.errors.append("Menos de 2 clases encontradas")
@@ -305,13 +428,13 @@ class DataLoader:
         for col in categorical_cols:
             unique_vals = df_encoded[col].nunique()
             if unique_vals <= 10:
-                le = LabelEncoder()
-                df_encoded[col] = le.fit_transform(df_encoded[col].astype(str))
-                encoded_cols.append(col)
-            else:
                 dummies = pd.get_dummies(df_encoded[col], prefix=col, drop_first=True)
                 df_encoded = pd.concat([df_encoded, dummies], axis=1)
                 df_encoded = df_encoded.drop(columns=[col])
+                encoded_cols.append(col)
+            else:
+                le = LabelEncoder()
+                df_encoded[col] = le.fit_transform(df_encoded[col].astype(str))
                 encoded_cols.append(col)
         if encoded_cols:
             print(f"Columnas codificadas: {encoded_cols}")

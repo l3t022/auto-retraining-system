@@ -113,7 +113,7 @@ class ModelSelector:
             new_val = new_metrics[primary]
             
             if new_val < current_val:
-                pct_improvement = ((current_val - new_val) / current_val) * 100
+                pct_improvement = ((current_val - new_val) / current_val) * 100 if current_val != 0 else float('inf')
                 
                 if pct_improvement >= improvement_threshold * 100:
                     return True, f"MSE mejoró {pct_improvement:.2f}%"
@@ -128,7 +128,7 @@ class ModelSelector:
             new_val = new_metrics[primary]
             
             if new_val > current_val:
-                pct_improvement = ((new_val - current_val) / current_val) * 100
+                pct_improvement = ((new_val - current_val) / current_val) * 100 if current_val != 0 else float('inf')
                 
                 if pct_improvement >= improvement_threshold * 100:
                     return True, f"Accuracy mejoró {pct_improvement:.2f}%"
